@@ -6,16 +6,27 @@ import { createCalendarEvent } from "@/lib/calendar";
 
 export const maxDuration = 300; // 5 min max for Vercel
 
+export async function GET(request: Request) {
+  return handleScrape(request);
+}
+
 export async function POST(request: Request) {
-  // Authenticate: accept CRON_SECRET via header or query param
+  return handleScrape(request);
+}
+
+async function handleScrape(request: Request) {
+  // Authenticate: accept our CRON_SECRET (Bearer header or query param)
+  // OR Vercel's cron auth header (Authorization: Bearer <CRON_SECRET>)
   const authHeader = request.headers.get("authorization");
   const token = authHeader?.replace("Bearer ", "");
   const { searchParams } = new URL(request.url);
   const queryToken = searchParams.get("token");
 
-  if (
-    (token ?? queryToken) !== process.env.CRON_SECRET
-  ) {
+  const isAuthed =
+    token === process.env.CRON_SECRET ||
+    queryToken === process.env.CRON_SECRET;
+
+  if (!isAuthed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
