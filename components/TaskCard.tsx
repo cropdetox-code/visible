@@ -23,7 +23,7 @@ interface Task {
 
 function formatDueDate(dateStr: string): string {
   // Parse as local date to avoid timezone shifts
-  const [year, month, day] = dateStr.split("-").map(Number);
+  const [, month, day] = dateStr.split("-").map(Number);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${day} ${months[month - 1]}`;
 }
