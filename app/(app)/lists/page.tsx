@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import AppHeader from "@/components/AppHeader";
 import { createBrowserSupabaseClient } from "@/lib/supabase";
+import { useHouseholdId } from "@/lib/hooks";
 
 interface List {
   id: string;
@@ -18,6 +19,7 @@ interface ListItem {
 }
 
 export default function ListsPage() {
+  const { householdId, loading: householdLoading } = useHouseholdId();
   const [lists, setLists] = useState<List[]>([]);
   const [items, setItems] = useState<Record<string, ListItem[]>>({});
   const [activeListId, setActiveListId] = useState<string | null>(null);
@@ -26,14 +28,18 @@ export default function ListsPage() {
   const [newListName, setNewListName] = useState("");
   const [newListEmoji, setNewListEmoji] = useState("");
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const supabase = createBrowserSupabaseClient();
 
   const fetchLists = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error: fetchErr } = await supabase
       .from("lists")
       .select("*")
       .order("created_at", { ascending: true });
+    if (fetchErr) {
+      setError(`Failed to load lists: ${fetchErr.message}`);
+    }
     setLists(data ?? []);
     if (data && data.length > 0 && !activeListId) {
       setActiveListId(data[0].id);
@@ -52,8 +58,8 @@ export default function ListsPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    fetchLists();
-  }, [fetchLists]);
+    if (!householdLoading) fetchLists();
+  }, [fetchLists, householdLoading]);
 
   useEffect(() => {
     if (activeListId) fetchItems(activeListId);
@@ -86,13 +92,19 @@ export default function ListsPage() {
   async function addItem(e: React.FormEvent) {
     e.preventDefault();
     if (!newItemText.trim() || !activeListId) return;
+    setError(null);
 
     const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from("list_items").insert({
+    const { error: insertErr } = await supabase.from("list_items").insert({
       list_id: activeListId,
       text: newItemText.trim(),
       added_by: user?.id ?? null,
     });
+
+    if (insertErr) {
+      setError(`Failed to add item: ${insertErr.message}`);
+      return;
+    }
     setNewItemText("");
     fetchItems(activeListId);
   }
@@ -113,21 +125,27 @@ export default function ListsPage() {
   async function createList(e: React.FormEvent) {
     e.preventDefault();
     if (!newListName.trim()) return;
+    setError(null);
 
-    const { data } = await supabase
+    if (!householdId) {
+      setError("No household found. Please sign out and sign back in to set up your household.");
+      return;
+    }
+
+    const { data, error: insertErr } = await supabase
       .from("lists")
       .insert({
         name: newListName.trim(),
         emoji: newListEmoji.trim() || null,
-        household_id: (
-          await supabase
-            .from("profiles")
-            .select("household_id")
-            .single()
-        ).data?.household_id,
+        household_id: householdId,
       })
       .select("id")
       .single();
+
+    if (insertErr) {
+      setError(`Failed to create list: ${insertErr.message}`);
+      return;
+    }
 
     setNewListName("");
     setNewListEmoji("");
@@ -144,7 +162,20 @@ export default function ListsPage() {
     <>
       <AppHeader title="Lists" />
       <div className="px-4 py-4">
-        {loading ? (
+        {/* Error banner */}
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <p className="text-sm text-red-700">{error}</p>
+            <button
+              onClick={() => setError(null)}
+              className="mt-1 text-xs font-medium text-red-500"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {loading || householdLoading ? (
           <div className="py-12 text-center text-sm text-gray-400">Loading...</div>
         ) : (
           <>
